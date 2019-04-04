@@ -79,12 +79,13 @@ export interface ConsumerOptions {
   sqs?: SQS;
   region?: string;
   handleMessageTimeout?: number;
-  handleMessage(message: SQSMessage): Promise<void>;
+  handleMessage(message: object): Promise<void>;
+  preProcessMessages(messages: SQSMessage[]): object[];
 }
 
 export class Consumer extends EventEmitter {
   private queueUrl: string;
-  private handleMessage: (message: SQSMessage) => Promise<void>;
+  private handleMessage: (message: object) => Promise<void>;
   private handleMessageTimeout: number;
   private attributeNames: string[];
   private messageAttributeNames: string[];
@@ -95,6 +96,7 @@ export class Consumer extends EventEmitter {
   private authenticationErrorTimeout: number;
   private terminateVisibilityTimeout: boolean;
   private sqs: SQS;
+  private preProcessMessages: (messages: SQSMessage[]) => object[];
 
   constructor(options: ConsumerOptions) {
     super();
@@ -115,6 +117,8 @@ export class Consumer extends EventEmitter {
     this.sqs = options.sqs || new SQS({
       region: options.region || process.env.AWS_REGION || 'eu-west-1'
     });
+
+    this.preProcessMessages = options.preProcessMessages;
 
     autoBind(this);
   }
@@ -146,7 +150,8 @@ export class Consumer extends EventEmitter {
 
     if (response) {
       if (hasMessages(response)) {
-        await Promise.all(response.Messages.map(this.processMessage));
+        const messages = this.preProcessMessages(response.Messages);
+        await Promise.all(messages.map(this.processMessage));
         this.emit('response_processed');
       } else {
         this.emit('empty');
